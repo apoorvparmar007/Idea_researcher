@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import TypedDict
 # from langchain.agents import Create_Agent
 
-llm = ChatOllama(model='gemma4:12b')
+llm = ChatOllama(model='qwen3:8b')
 
 class IdeaState(TypedDict):
     department_name: str
@@ -14,6 +14,8 @@ class IdeaState(TypedDict):
     agentic_ideas: str
     functions: str
     final_ideas: str
+
+
 
 def department_functions(state: IdeaState):
     print("\nUnderstanding Department Functions\n")
@@ -30,9 +32,12 @@ def department_functions(state: IdeaState):
 def ML_ideas(state: IdeaState):
     print("\nSearching for ML solutions\n")
     department_name = state['department_name']
+    functions = state['functions']
 
-    prompt = f"""Fetch all the Machine Learning ideas or solutions that are being implemented in the 
-    organizations across the world in the {department_name} department."""
+    prompt = f"""Basis the below department functions, Fetch all the Machine Learning ideas or solutions 
+    that are being implemented in the 
+    organizations across the world in the {department_name} department for each of these functions.\n
+    Department Functions:\n {functions}"""
 
     response = llm.invoke(prompt)
     print("\nML Solutions:\n",response.content)
@@ -42,9 +47,12 @@ def ML_ideas(state: IdeaState):
 def genai_ideas(state: IdeaState):
     print("\nSearching for genai solutions\n")
     department_name = state['department_name']
+    functions = state['functions']
 
-    prompt = f"""Fetch all the generative ai ideas or solutions that are being implemented in the 
-    organizations across the world in the {department_name} department."""
+    prompt = f"""Basis the below department functions, Fetch all the generative ai ideas or solutions 
+    that are being implemented in the 
+    organizations across the world in the {department_name} department for each of these functions.\n
+    Department Functions:\n {functions}"""
 
     response = llm.invoke(prompt)
     print("\nGen ai solutions\n",response.content)
@@ -54,9 +62,11 @@ def genai_ideas(state: IdeaState):
 def agentic_ideas(state: IdeaState):
     print("\nSearching for the agentic solutions\n")
     department_name = state['department_name']
+    functions = state['functions']
 
-    prompt = f"""Fetch all the agentic ai ideas or solutions that are being implemented in the 
-    organizations across the world in the {department_name} department."""
+    prompt = f"""Basis the below department functions, Fetch all the agentic ai ideas or solutions that are being implemented in the 
+    organizations across the world in the {department_name} department for each of these functions.\n
+    Department Functions:\n {functions}"""
 
     response = llm.invoke(prompt)
     print("\nAgentic Solutions\n",response.content)
