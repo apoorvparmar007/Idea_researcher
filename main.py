@@ -2,9 +2,16 @@ from langgraph.graph import StateGraph, START, END
 from langchain_ollama import ChatOllama
 from pydantic import BaseModel
 from typing import TypedDict
+from langchain_community.tools import DuckDuckGoSearchRun
+# from ddgs import DDGS
 # from langchain.agents import Create_Agent
 
+ddg = DuckDuckGoSearchRun()
+
 llm = ChatOllama(model='qwen3:8b')
+
+
+
 
 class IdeaState(TypedDict):
     department_name: str
@@ -21,7 +28,8 @@ def department_functions(state: IdeaState):
     print("\nUnderstanding Department Functions\n")
     department_name = state['department_name']
 
-    prompt = f"""List all the funtions,Sub-Functions,Tools & Systems Used within this department: {department_name}"""
+    prompt = f"""List all the funtions,Sub-Functions,Tools & Systems Used within this 
+    department: {department_name}"""
 
     response = llm.invoke(prompt)
     print("\nIdentified below Department Functions\n: ",response.content)
@@ -34,10 +42,22 @@ def ML_ideas(state: IdeaState):
     department_name = state['department_name']
     functions = state['functions']
 
-    prompt = f"""Basis the below department functions, Fetch all the Machine Learning ideas or solutions 
-    that are being implemented in the 
+    prompt_web = f"""Fetch all the Machine Learning ideas or solutions
+        that are being implemented in the
+        organizations across the world in the {department_name} department for each of these functions.\n
+        Department Functions:\n {functions} """
+
+    result = ddg.invoke(prompt_web)
+    # search_results = web_search(f"Machine Learning use cases and solutions in {department_name} department")
+
+    prompt = f"""Basis the below department functions and live web search results, 
+    Fetch all the Machine Learning ideas or solutions
+    that are being implemented in the
     organizations across the world in the {department_name} department for each of these functions.\n
-    Department Functions:\n {functions}"""
+    Department Functions:\n {functions}\n
+Web search:\n {result}"""
+
+    
 
     response = llm.invoke(prompt)
     print("\nML Solutions:\n",response.content)
@@ -49,10 +69,13 @@ def genai_ideas(state: IdeaState):
     department_name = state['department_name']
     functions = state['functions']
 
-    prompt = f"""Basis the below department functions, Fetch all the generative ai ideas or solutions 
-    that are being implemented in the 
+    search_results = ddg.invoke(f"Generative AI use cases and solutions in {department_name} department")
+
+    prompt = f"""Basis the below department functions and live web search results, Fetch all the generative ai ideas or solutions
+    that are being implemented in the
     organizations across the world in the {department_name} department for each of these functions.\n
-    Department Functions:\n {functions}"""
+    Department Functions:\n {functions}\n
+    Web Search Results:\n {search_results}"""
 
     response = llm.invoke(prompt)
     print("\nGen ai solutions\n",response.content)
@@ -64,9 +87,12 @@ def agentic_ideas(state: IdeaState):
     department_name = state['department_name']
     functions = state['functions']
 
-    prompt = f"""Basis the below department functions, Fetch all the agentic ai ideas or solutions that are being implemented in the 
+    search_results = ddg.invoke(f"Agentic AI use cases and solutions in {department_name} department")
+
+    prompt = f"""Basis the below department functions and live web search results, Fetch all the agentic ai ideas or solutions that are being implemented in the
     organizations across the world in the {department_name} department for each of these functions.\n
-    Department Functions:\n {functions}"""
+    Department Functions:\n {functions}\n
+    Web Search Results:\n {search_results}"""
 
     response = llm.invoke(prompt)
     print("\nAgentic Solutions\n",response.content)
