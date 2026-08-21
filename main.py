@@ -3,12 +3,16 @@ from langchain_ollama import ChatOllama
 from pydantic import BaseModel
 from typing import TypedDict
 from langchain_community.tools import DuckDuckGoSearchRun
+import json
 # from ddgs import DDGS
 # from langchain.agents import Create_Agent
 
 ddg = DuckDuckGoSearchRun()
 
+tools = [ddg]
+
 llm = ChatOllama(model='qwen3:8b')
+llm_with_tools = llm.bind_tools(tools)
 
 
 
@@ -42,24 +46,17 @@ def ML_ideas(state: IdeaState):
     department_name = state['department_name']
     functions = state['functions']
 
-    prompt_web = f"""Fetch all the Machine Learning ideas or solutions
-        that are being implemented in the
-        organizations across the world in the {department_name} department for each of these functions.\n
-        Department Functions:\n {functions} """
-
-    result = ddg.invoke(prompt_web)
     # search_results = web_search(f"Machine Learning use cases and solutions in {department_name} department")
 
-    prompt = f"""Basis the below department functions and live web search results, 
+    prompt = f"""Basis the below department functions, 
     Fetch all the Machine Learning ideas or solutions
     that are being implemented in the
     organizations across the world in the {department_name} department for each of these functions.\n
-    Department Functions:\n {functions}\n
-Web search:\n {result}"""
+    Department Functions:\n {functions}"""
 
     
 
-    response = llm.invoke(prompt)
+    response = llm_with_tools.invoke(prompt)
     print("\nML Solutions:\n",response.content)
 
     return {"ml_ideas":response.content}
@@ -69,15 +66,12 @@ def genai_ideas(state: IdeaState):
     department_name = state['department_name']
     functions = state['functions']
 
-    search_results = ddg.invoke(f"Generative AI use cases and solutions in {department_name} department")
-
-    prompt = f"""Basis the below department functions and live web search results, Fetch all the generative ai ideas or solutions
+    prompt = f"""Basis the below department functions, Fetch all the generative ai ideas or solutions
     that are being implemented in the
     organizations across the world in the {department_name} department for each of these functions.\n
-    Department Functions:\n {functions}\n
-    Web Search Results:\n {search_results}"""
+    Department Functions:\n {functions}"""
 
-    response = llm.invoke(prompt)
+    response = llm_with_tools.invoke(prompt)
     print("\nGen ai solutions\n",response.content)
 
     return {"genai_ideas":response.content}
@@ -87,14 +81,13 @@ def agentic_ideas(state: IdeaState):
     department_name = state['department_name']
     functions = state['functions']
 
-    search_results = ddg.invoke(f"Agentic AI use cases and solutions in {department_name} department")
+    # search_results = ddg.invoke(f"Agentic AI use cases and solutions in {department_name} department")
 
-    prompt = f"""Basis the below department functions and live web search results, Fetch all the agentic ai ideas or solutions that are being implemented in the
+    prompt = f"""Basis the below department functions, Fetch all the agentic ai ideas or solutions that are being implemented in the
     organizations across the world in the {department_name} department for each of these functions.\n
-    Department Functions:\n {functions}\n
-    Web Search Results:\n {search_results}"""
+    Department Functions:\n {functions}"""
 
-    response = llm.invoke(prompt)
+    response = llm_with_tools.invoke(prompt)
     print("\nAgentic Solutions\n",response.content)
 
     return {"agentic_ideas":response.content}
@@ -144,4 +137,8 @@ user_input = input("Enter the department name: \n")
 
 initial_state = {"department_name":user_input}
 
-workflow.invoke(initial_state)
+final_state = workflow.invoke(initial_state)
+
+with open("final_state.txt", "w", encoding="utf-8") as f:
+    # Use json.dumps for a neat, readable string format of the state dict
+    f.write(json.dumps(final_state, indent=4, default=str))
