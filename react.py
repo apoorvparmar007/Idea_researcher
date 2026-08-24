@@ -9,7 +9,10 @@ from langchain.agents import create_agent
 from langchain_core.tools import tool
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from ddgs.exceptions import DDGSException
+from langchain_google_genai import ChatGoogleGenerativeAI
+from dotenv import load_dotenv
 
+load_dotenv()
 
 
 ddg = DuckDuckGoSearchRun()
@@ -39,6 +42,8 @@ tools = [ddg_search]
 llm = ChatOllama(model='ornith-1.5:9b', num_ctx=16384)
 # llm_with_tools = llm.bind_tools(tools)
 
+evaluator_llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite")
+
 
 
 
@@ -48,6 +53,7 @@ class IdeaState(TypedDict):
     generated_ideas: str
     functions: str
     final_ideas: str
+    evaluated_ideas: str
 
 
 
@@ -110,42 +116,57 @@ def idea_generator(state: IdeaState):
 
     return ({"generated_ideas":last_message.content})
 
-# def idea_aggregator(state: IdeaState):
-#     print("\nAggregate the Ideas\n")
-#     ml = state['ml_ideas']
-#     genai = state['genai_ideas']
-#     agentic = state['agentic_ideas']
+def idea_evaluator(state: IdeaState):
+    print("\nEvaluate the Ideas\n")
 
-#     department_name = state['department_name']
+    department_name = state['department_name']
+    generated_ideas = state['generated_ideas']
 
-#     prompt = f"""Below are all the generative ai, agentic ai and ML ideas/solutions that are being implemented in the 
-#     organizations in the {department_name} department. I want you to aggregate each idea and create a single comphresensive 
-#     list.\n
-#     ml ideas: {ml}\n
-# gen ai ideas: {genai}\n
-# agentic: {agentic}"""
+    prompt = f"""Below are all the generative ai, agentic ai and ML ideas/solutions that are being implemented in the 
+    organizations in the {department_name} department. Evaluator all the ideas on feasibility and impact on score
+     of 10 each. 
+     Ideas:\n {generated_ideas}"""
 
-#     response = llm_with_tools.invoke(prompt)
-#     print("\nFinal Ideas\n",response.content)
+    agent = create_agent(
+            model=evaluator_llm,
+            tools=tools,
+            system_prompt=(
+                "You are a helpful assistant. Use the ddg_search tool sparingly: "
+                "run at most 2 rounds of searches (a handful of queries total), "
+                "then stop searching and write your final synthesized answer."
+            )
+        )
+    
+        # 3. Invoke the agent loop
+    result = agent.invoke(
+            {
+                "messages": [
+                    {"role": "user", "content": prompt}
+                ]
+            },
+            config={"recursion_limit": 10},
+        )
 
-#     return {"final_ideas":response.content}
+    print("\evaluated_ideas\n",result["messages"][-1].content)
+
+    return {"evaluated_ideas":result["messages"][-1].content}
 
 graph = StateGraph(IdeaState)
 
 
 graph.add_node("idea_generator",idea_generator)
 graph.add_node("department_functions",department_functions)
-# graph.add_node("idea_aggregator",idea_aggregator)
+graph.add_node("idea_evaluator",idea_evaluator)
 
 graph.add_edge(START,"department_functions")
 graph.add_edge("department_functions","idea_generator")
-# graph.add_edge("ML_ideas","genai_ideas")
-# graph.add_edge("genai_ideas","agentic_ideas")
+graph.add_edge("idea_generator","idea_evaluator")
+# graph.add_edge("idea_evaluator","idea_evaluator")
 
 # graph.add_edge("ML_ideas","idea_aggregator")
 # graph.add_edge("genai_ideas","idea_aggregator")
 # graph.add_edge("agentic_ideas","idea_aggregator")
-graph.add_edge("idea_generator",END)
+graph.add_edge("idea_evaluator",END)
 
 
 workflow = graph.compile()
