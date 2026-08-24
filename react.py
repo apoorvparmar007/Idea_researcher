@@ -5,14 +5,39 @@ from typing import TypedDict
 from langchain_community.tools import DuckDuckGoSearchRun
 import json
 # from ddgs import DDGS
-# from langchain.agents import Create_Agent
+from langchain.agents import create_agent
+from langchain_core.tools import tool
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from ddgs.exceptions import DDGSException
+
+
 
 ddg = DuckDuckGoSearchRun()
 
-tools = [ddg]
 
-llm = ChatOllama(model='ornith-1.5:9b')
-llm_with_tools = llm.bind_tools(tools)
+@retry(
+    stop=stop_after_attempt(4),
+    wait=wait_exponential(multiplier=1, min=2, max=20),
+    retry=retry_if_exception_type(DDGSException),
+    reraise=True,
+)
+def _ddg_search_with_retry(query: str) -> str:
+    return ddg.invoke(query)
+
+
+@tool
+def ddg_search(query: str) -> str:
+    """Search DuckDuckGo for the given query and return the results."""
+    try:
+        return _ddg_search_with_retry(query)
+    except DDGSException as e:
+        return f"Search failed after retries: {e}"
+
+
+tools = [ddg_search]
+
+llm = ChatOllama(model='ornith-1.5:9b', num_ctx=16384)
+# llm_with_tools = llm.bind_tools(tools)
 
 
 
@@ -20,9 +45,7 @@ llm_with_tools = llm.bind_tools(tools)
 class IdeaState(TypedDict):
     department_name: str
     company_name: str
-    ml_ideas: str
-    genai_ideas: str
-    agentic_ideas: str
+    generated_ideas: str
     functions: str
     final_ideas: str
 
@@ -35,100 +58,94 @@ def department_functions(state: IdeaState):
     prompt = f"""List all the funtions,Sub-Functions,Tools & Systems Used within this 
     department: {department_name}"""
 
-    response = llm_with_tools.invoke(prompt)
+    response = llm.invoke(prompt)
     print("\nIdentified below Department Functions\n: ",response.content)
 
     return ({"functions":response.content})
 
+def idea_generator(state: IdeaState):
 
-def ML_ideas(state: IdeaState):
-    print("\nSearching for ML solutions\n")
-    department_name = state['department_name']
-    functions = state['functions']
-
-    # search_results = web_search(f"Machine Learning use cases and solutions in {department_name} department")
-
-    prompt = f"""Basis the below department functions, 
-    Fetch all the Machine Learning ideas or solutions
-    that are being implemented in the
-    organizations across the world in the {department_name} department for each of these functions.\n
-    Department Functions:\n {functions}"""
-
-    
-
-    response = ddg.invoke(prompt)
-    print("\nML Solutions:\n",response)
-
-    return {"ml_ideas":response}
-
-def genai_ideas(state: IdeaState):
-    print("\nSearching for genai solutions\n")
-    department_name = state['department_name']
-    functions = state['functions']
-
-    prompt = f"""Basis the below department functions, Fetch all the generative ai ideas or solutions
-    that are being implemented in the
-    organizations across the world in the {department_name} department for each of these functions.\n
-    Department Functions:\n {functions}"""
-
-    response = ddg.invoke(prompt)
-    print("\nGen ai solutions\n",response)
-
-    return {"genai_ideas":response}
-
-def agentic_ideas(state: IdeaState):
-    print("\nSearching for the agentic solutions\n")
+    print("\nGenerating Ideas\n")
     department_name = state['department_name']
     functions = state['functions']
 
     # search_results = ddg.invoke(f"Agentic AI use cases and solutions in {department_name} department")
 
-    prompt = f"""Basis the below department functions, Fetch all the agentic ai ideas or solutions that are being implemented in the
+    prompt = f"""Basis the below department functions, Fetch all the agentic ai, gen ai and ML ideas or 
+    solutions that are being implemented in the
     organizations across the world in the {department_name} department for each of these functions.\n
     Department Functions:\n {functions}"""
 
-    response = ddg.invoke(prompt)
-    print("\nAgentic Solutions\n",response)
+    
+    agent = create_agent(
+        model=llm,
+        tools=tools,
+        system_prompt=(
+            "You are a helpful assistant. Use the ddg_search tool sparingly: "
+            "run at most 2 rounds of searches (a handful of queries total), "
+            "then stop searching and write your final synthesized answer."
+        ),
+        debug=True
+    )
 
-    return {"agentic_ideas":response}
+    # 3. Invoke the agent loop
+    result = agent.invoke(
+        {
+            "messages": [
+                {"role": "user", "content": prompt}
+            ]
+        },
+        config={"recursion_limit": 10},
+    )
 
-def idea_aggregator(state: IdeaState):
-    print("\nAggregate the Ideas\n")
-    ml = state['ml_ideas']
-    genai = state['genai_ideas']
-    agentic = state['agentic_ideas']
+    print("Result-0\n",result)
 
-    department_name = state['department_name']
+    last_message = result["messages"][-1]
+    print("Last message type:", type(last_message).__name__)
+    print("Last message content:", repr(last_message.content))
+    print("Last message additional_kwargs:", last_message.additional_kwargs)
+    print("Last message response_metadata:", getattr(last_message, "response_metadata", None))
 
-    prompt = f"""Below are all the generative ai, agentic ai and ML ideas/solutions that are being implemented in the 
-    organizations in the {department_name} department. I want you to aggregate each idea and create a single comphresensive 
-    list.\n
-    ml ideas: {ml}\n
-gen ai ideas: {genai}\n
-agentic: {agentic}"""
+    print("Result\n",last_message.content)
 
-    response = llm_with_tools.invoke(prompt)
-    print("\nFinal Ideas\n",response.content)
+    return ({"generated_ideas":last_message.content})
 
-    return {"final_ideas":response.content}
+# def idea_aggregator(state: IdeaState):
+#     print("\nAggregate the Ideas\n")
+#     ml = state['ml_ideas']
+#     genai = state['genai_ideas']
+#     agentic = state['agentic_ideas']
+
+#     department_name = state['department_name']
+
+#     prompt = f"""Below are all the generative ai, agentic ai and ML ideas/solutions that are being implemented in the 
+#     organizations in the {department_name} department. I want you to aggregate each idea and create a single comphresensive 
+#     list.\n
+#     ml ideas: {ml}\n
+# gen ai ideas: {genai}\n
+# agentic: {agentic}"""
+
+#     response = llm_with_tools.invoke(prompt)
+#     print("\nFinal Ideas\n",response.content)
+
+#     return {"final_ideas":response.content}
 
 graph = StateGraph(IdeaState)
 
-graph.add_node("ML_ideas",ML_ideas)
-graph.add_node("genai_ideas",genai_ideas)
-graph.add_node("agentic_ideas",agentic_ideas)
+
+graph.add_node("idea_generator",idea_generator)
 graph.add_node("department_functions",department_functions)
-graph.add_node("idea_aggregator",idea_aggregator)
+# graph.add_node("idea_aggregator",idea_aggregator)
 
 graph.add_edge(START,"department_functions")
-graph.add_edge("department_functions","ML_ideas")
-graph.add_edge("ML_ideas","genai_ideas")
-graph.add_edge("genai_ideas","agentic_ideas")
+graph.add_edge("department_functions","idea_generator")
+# graph.add_edge("ML_ideas","genai_ideas")
+# graph.add_edge("genai_ideas","agentic_ideas")
 
 # graph.add_edge("ML_ideas","idea_aggregator")
 # graph.add_edge("genai_ideas","idea_aggregator")
-graph.add_edge("agentic_ideas","idea_aggregator")
-graph.add_edge("idea_aggregator",END)
+# graph.add_edge("agentic_ideas","idea_aggregator")
+graph.add_edge("idea_generator",END)
 
 
 workflow = graph.compile()
